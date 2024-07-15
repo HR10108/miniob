@@ -416,7 +416,7 @@ bool RecordPageHandler::is_full() const { return page_header_->record_num >= pag
 
 
 RC PaxRecordPageHandler::insert_record(const char *data, RID *rid) {
-  // LOG_WARN("run 1");
+  LOG_WARN("run 1");
   ASSERT(rw_mode_ != ReadWriteMode::READ_ONLY, 
         "cannot insert record into page while the page is readonly");
   // 检查页面是否已满
@@ -454,7 +454,7 @@ RC PaxRecordPageHandler::insert_record(const char *data, RID *rid) {
     rid->page_num = get_page_num();
     rid->slot_num = slot;
   }
-  // LOG_WARN("run 2");
+  LOG_WARN("run 2");
   return RC::SUCCESS;
 }
 
