@@ -416,7 +416,6 @@ bool RecordPageHandler::is_full() const { return page_header_->record_num >= pag
 
 
 RC PaxRecordPageHandler::insert_record(const char *data, RID *rid) {
-  LOG_WARN("run 1");
   ASSERT(rw_mode_ != ReadWriteMode::READ_ONLY, 
         "cannot insert record into page while the page is readonly");
   // 检查页面是否已满
@@ -454,7 +453,6 @@ RC PaxRecordPageHandler::insert_record(const char *data, RID *rid) {
     rid->page_num = get_page_num();
     rid->slot_num = slot;
   }
-  LOG_WARN("run 2");
   return RC::SUCCESS;
 }
 
@@ -484,41 +482,69 @@ RC PaxRecordPageHandler::delete_record(const RID *rid)
   }
 }
 
+// RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
+// {
+//   //code
+//   LOG_WARN("run 3");
+//   if (rid.slot_num >= page_header_->record_capacity) {
+//     LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, frame=%s, page_header=%s",
+//               rid.slot_num, frame_->to_string().c_str(), page_header_->to_string().c_str());
+//     return RC::RECORD_INVALID_RID;
+//   }
+
+//   Bitmap bitmap(bitmap_, page_header_->record_capacity);
+//   if (!bitmap.get_bit(rid.slot_num)) {
+//     LOG_ERROR("Invalid slot_num:%d, slot is empty, page_num %d.", rid.slot_num, frame_->page_num());
+//     return RC::RECORD_NOT_EXIST;
+//   }
+//   record.set_rid(rid);
+//   record.set_data_owner((char *)malloc(page_header_->record_real_size), page_header_->record_real_size);
+//   //int *column_index = reinterpret_cast<int *>(frame_->data() + page_header_->col_idx_offset);
+//   int prev_cols_len = 0;
+//   int slot = rid.slot_num;
+//   for (int i = 0; i < page_header_->column_num; i++) {
+//     int column_len = get_field_len(i);
+//     char *column_data = get_field_data(slot,i);
+
+//     record.set_field(prev_cols_len,column_len,column_data);
+//     prev_cols_len += column_len;
+//   }
+//   LOG_WARN("run 4");
+//   return RC::SUCCESS;
+
+// }
+
 RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
 {
-  //code
-  LOG_WARN("run 3");
   if (rid.slot_num >= page_header_->record_capacity) {
     LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, frame=%s, page_header=%s",
               rid.slot_num, frame_->to_string().c_str(), page_header_->to_string().c_str());
     return RC::RECORD_INVALID_RID;
   }
 
+ // 获取 bitmap
   Bitmap bitmap(bitmap_, page_header_->record_capacity);
   if (!bitmap.get_bit(rid.slot_num)) {
     LOG_ERROR("Invalid slot_num:%d, slot is empty, page_num %d.", rid.slot_num, frame_->page_num());
     return RC::RECORD_NOT_EXIST;
   }
-  record.set_rid(rid);
-  record.set_data_owner((char *)malloc(page_header_->record_real_size), page_header_->record_real_size);
-  //int *column_index = reinterpret_cast<int *>(frame_->data() + page_header_->col_idx_offset);
-  int prev_cols_len = 0;
-  int slot = rid.slot_num;
-  for (int i = 0; i < page_header_->column_num; i++) {
-    int column_len = get_field_len(i);
-    char *column_data = get_field_data(slot,i);
 
-    record.set_field(prev_cols_len,column_len,column_data);
-    prev_cols_len += column_len;
+  record.set_rid(rid);
+  char* record_data = (char *)malloc(page_header_->record_real_size);
+  int offset = 0;
+  for (int col_index = 0; col_index < page_header_->column_num; ++col_index) {
+    char *data = get_field_data(rid.slot_num, col_index);
+    int field_len = get_field_len(col_index);
+    memcpy(record_data + offset, data, field_len);
+    offset += field_len;
   }
-  LOG_WARN("run 4");
+  record.set_data_owner(record_data, page_header_->record_real_size);
   return RC::SUCCESS;
 }
 
 
 // TODO: specify the column_ids that chunk needed. currenly we get all columns
 RC PaxRecordPageHandler::get_chunk(Chunk &chunk) {
-  LOG_WARN("run 5");
   Bitmap bitmap(bitmap_, page_header_->record_capacity);
   
   // 找到存有数据的slot
@@ -540,7 +566,6 @@ RC PaxRecordPageHandler::get_chunk(Chunk &chunk) {
           col->append_one(data);
       }
   }
-  LOG_WARN("run 6");
   return RC::SUCCESS;
 }
 
