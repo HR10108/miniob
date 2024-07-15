@@ -111,7 +111,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         LE
         GE
         NE
-        SUM
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -531,10 +530,10 @@ expression:
     | '*' {
       $$ = new StarExpr();
     }
-    | SUM LBRACE expression RBRACE {
-      $$ = create_aggregate_expression("SUM", $3, sql_string, &@$);
+    | ID LBRACE expression RBRACE {
+      $$ = create_aggregate_expression($1, $3, sql_string, &@$);
+      free($1);
     }
-    // your code here
     ;
 
 rel_attr:
@@ -662,8 +661,16 @@ comp_op:
 
 // your code here
 group_by:
-    GROUP BY expression_list { $$ = $3; }
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | GROUP BY expression_list
+    {
+      $$ = $3;
+    }
     ;
+
 load_data_stmt:
     LOAD DATA INFILE SSS INTO TABLE ID 
     {
