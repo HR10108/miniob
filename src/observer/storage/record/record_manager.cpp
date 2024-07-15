@@ -487,6 +487,7 @@ RC PaxRecordPageHandler::delete_record(const RID *rid)
 RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
 {
   //code
+  LOG_WARN("run 3");
   if (rid.slot_num >= page_header_->record_capacity) {
     LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, frame=%s, page_header=%s",
               rid.slot_num, frame_->to_string().c_str(), page_header_->to_string().c_str());
@@ -510,35 +511,37 @@ RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
     record.set_field(prev_cols_len,column_len,column_data);
     prev_cols_len += column_len;
   }
+  LOG_WARN("run 4");
   return RC::SUCCESS;
 }
 
 
 // TODO: specify the column_ids that chunk needed. currenly we get all columns
 RC PaxRecordPageHandler::get_chunk(Chunk &chunk) {
-    Bitmap bitmap(bitmap_, page_header_->record_capacity);
-    
-    // 找到存有数据的slot
-    std::vector<int> valid_indices;
-    int next_bit = 0;
-    while ((next_bit = bitmap.next_setted_bit(next_bit)) != -1) {
-        valid_indices.push_back(next_bit);
-        next_bit += 1;
-    }
+  LOG_WARN("run 5");
+  Bitmap bitmap(bitmap_, page_header_->record_capacity);
+  
+  // 找到存有数据的slot
+  std::vector<int> valid_indices;
+  int next_bit = 0;
+  while ((next_bit = bitmap.next_setted_bit(next_bit)) != -1) {
+      valid_indices.push_back(next_bit);
+      next_bit += 1;
+  }
 
-    // 遍历所有列，并将有效数据添加到chunk中
-    for (int i = 0; i < chunk.column_num(); i++) {
-        Column* col = chunk.column_ptr(i);
-        int col_id = chunk.column_ids(i);
+  // 遍历所有列，并将有效数据添加到chunk中
+  for (int i = 0; i < chunk.column_num(); i++) {
+      Column* col = chunk.column_ptr(i);
+      int col_id = chunk.column_ids(i);
 
-        // 对于每个有效的记录索引，获取数据并追加到列中
-        for (int record_index : valid_indices) {
-            char* data = get_field_data(record_index, col_id);
-            col->append_one(data);
-        }
-    }
-
-    return RC::SUCCESS;
+      // 对于每个有效的记录索引，获取数据并追加到列中
+      for (int record_index : valid_indices) {
+          char* data = get_field_data(record_index, col_id);
+          col->append_one(data);
+      }
+  }
+  LOG_WARN("run 6");
+  return RC::SUCCESS;
 }
 
 
