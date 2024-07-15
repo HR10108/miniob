@@ -485,7 +485,6 @@ RC PaxRecordPageHandler::delete_record(const RID *rid)
 RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
 {
   //code
-  LOG_WARN("run 3");
   if (rid.slot_num >= page_header_->record_capacity) {
     LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, frame=%s, page_header=%s",
               rid.slot_num, frame_->to_string().c_str(), page_header_->to_string().c_str());
@@ -498,18 +497,18 @@ RC PaxRecordPageHandler::get_record(const RID &rid, Record &record)
     return RC::RECORD_NOT_EXIST;
   }
   record.set_rid(rid);
-  record.set_data_owner((char *)malloc(page_header_->record_real_size), page_header_->record_real_size);
-  //int *column_index = reinterpret_cast<int *>(frame_->data() + page_header_->col_idx_offset);
+  //record.set_data_owner((char *)malloc(page_header_->record_real_size), page_header_->record_real_size);
+  char *read_data = (char*)malloc(page_header_->record_real_size);
   int prev_cols_len = 0;
   int slot = rid.slot_num;
   for (int i = 0; i < page_header_->column_num; i++) {
     int column_len = get_field_len(i);
     char *column_data = get_field_data(slot,i);
-
-    record.set_field(prev_cols_len,column_len,column_data);
+    memcpy(read_data + prev_cols_len,column_data,column_len);
+    //record.set_field(prev_cols_len,column_len,column_data);
     prev_cols_len += column_len;
   }
-  LOG_WARN("run 4");
+  record.set_data_owner(read_data,page_header_->record_real_size);
   return RC::SUCCESS;
 
 }
