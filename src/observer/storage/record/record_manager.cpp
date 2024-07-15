@@ -432,6 +432,12 @@ RC PaxRecordPageHandler::insert_record(const char *data, RID *rid) {
   bitmap.set_bit(slot);
   page_header_->record_num++;
 
+  RC rc = log_handler_.insert_record(frame_, RID(get_page_num(), slot), data);
+  if (OB_FAIL(rc)) {
+    LOG_ERROR("Failed to insert record. page_num %d:%d. rc=%s", disk_buffer_pool_->file_desc(), frame_->page_num(), strrc(rc));
+    // return rc; // ignore errors
+  }
+
   //获得column_index
   //int *column_index = reinterpret_cast<int *>(frame_->data() + page_header_->col_idx_offset);
   const char *data_ptr = data;
