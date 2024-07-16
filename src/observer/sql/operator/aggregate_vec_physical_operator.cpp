@@ -24,7 +24,7 @@ AggregateVecPhysicalOperator::AggregateVecPhysicalOperator(vector<Expression *> 
   value_expressions_.reserve(aggregate_expressions_.size());
 
   ranges::for_each(aggregate_expressions_, [this](Expression *expr) {
-    auto *      aggregate_expr = static_cast<AggregateExpr *>(expr);
+    auto       *aggregate_expr = static_cast<AggregateExpr *>(expr);
     Expression *child_expr     = aggregate_expr->child().get();
     ASSERT(child_expr != nullptr, "aggregation expression must have a child expression");
     value_expressions_.emplace_back(child_expr);
@@ -94,14 +94,45 @@ template <class STATE, typename T>
 void AggregateVecPhysicalOperator::update_aggregate_state(void *state, const Column &column)
 {
   STATE *state_ptr = reinterpret_cast<STATE *>(state);
-  T *    data      = (T *)column.data();
+  T     *data      = (T *)column.data();
   state_ptr->update(data, column.count());
 }
 
 RC AggregateVecPhysicalOperator::next(Chunk &chunk)
 {
-  // your code here
-  exit(-1);
+  // LOG_WARN("next group by operator");
+  if (chunk.column_num() != 0) {
+    // LOG_WARN("output chunk is not empty");
+    return RC::RECORD_EOF;
+  }
+  // 重置输出 Chunk 数据
+  chunk.reset_data();
+
+  // 遍历每一个聚合表达式，将其对应的聚合结果添加到输出 chunk 的相应列中
+  for (size_t i = 0; i < aggregate_expressions_.size(); i++) {
+    auto *aggregate_expr = static_cast<AggregateExpr *>(aggregate_expressions_[i]);
+    void *aggr_value     = aggr_values_.at(i);
+
+    if (aggregate_expr->aggregate_type() == AggregateExpr::Type::SUM) {
+      if (aggregate_expr->value_type() == AttrType::INTS) {
+        int sum_value = ((SumState<int> *)aggr_value)->value;
+        // LOG_INFO("sum value: %d", sum_value);
+        //  void add_column(unique_ptr<Column> col, int col_id);
+        chunk.add_column(make_unique<Column>(AttrType::INTS, sizeof(int)), i);
+        chunk.column_ptr(i)->append_one((char *)&sum_value);
+        // LOG_WARN("append sum value");
+      } else if (aggregate_expr->value_type() == AttrType::FLOATS) {
+        float sum_value = ((SumState<float> *)aggr_value)->value;
+        chunk.add_column(make_unique<Column>(AttrType::INTS, sizeof(int)), i);
+        chunk.column_ptr(i)->append_one((char *)&sum_value);
+      }
+    } else {
+      ASSERT(false, "not supported aggregation type");
+    }
+  }
+
+  // 返回状态码，表示操作成功
+  return RC::SUCCESS;
 }
 
 RC AggregateVecPhysicalOperator::close()
