@@ -14,8 +14,54 @@ See the Mulan PSL v2 for more details. */
 
 RC StandardAggregateHashTable::add_chunk(Chunk &groups_chunk, Chunk &aggrs_chunk)
 {
-  // your code here
-  exit(-1);
+  if (groups_chunk.rows() != aggrs_chunk.rows()) {
+    LOG_WARN("group_chunk and aggr_chunk rows must be equal.");
+    return RC::INVALID_ARGUMENT;
+  }
+  for (int row = 0; row < groups_chunk.rows(); ++row) {
+    std::vector<Value> group_values;
+    for (int col = 0; col < groups_chunk.column_num(); ++col) {
+      group_values.push_back(groups_chunk.column(col).get_value(row));
+    }
+    auto it = aggr_values_.find(group_values);
+    if (it == aggr_values_.end()) {
+      std::vector<Value> aggr_values;
+      for (int col = 0; col < aggrs_chunk.column_num(); ++col) {
+        aggr_values.push_back(aggrs_chunk.column(col).get_value(row));
+      }
+      aggr_values_[group_values] = aggr_values;
+    } else {
+      for (int col = 0; col < aggrs_chunk.column_num(); ++col) {
+        auto &aggr_value = it->second[col];
+        auto  cell_value = aggrs_chunk.column(col).get_value(row);
+        switch (aggr_types_[col]) {
+          case AggregateExpr::Type::SUM:
+            if (aggr_value.attr_type() == AttrType::INTS && cell_value.attr_type() == AttrType::INTS) {
+              aggr_value.set_int(aggr_value.get_int() + cell_value.get_int());
+            } else if (aggr_value.attr_type() == AttrType::FLOATS && cell_value.attr_type() == AttrType::FLOATS) {
+              aggr_value.set_float(aggr_value.get_float() + cell_value.get_float());
+            } else {
+              LOG_WARN("unsupported type for SUM operation");
+              return RC::INVALID_ARGUMENT;
+            }
+            break;
+          case AggregateExpr::Type::MAX:
+            if (aggr_value.compare(cell_value) < 0) {
+              aggr_value.set_value(cell_value);
+            }
+            break;
+          case AggregateExpr::Type::MIN:
+            if (aggr_value.compare(cell_value) > 0) {
+              aggr_value.set_value(cell_value);
+            }
+            break;
+          case AggregateExpr::Type::COUNT: aggr_value.set_int(aggr_value.get_int() + 1); break;
+          default: LOG_WARN("unsupported aggregate type"); return RC::INVALID_ARGUMENT;
+        }
+      }
+    }
+  }
+  return RC::SUCCESS;
 }
 
 void StandardAggregateHashTable::Scanner::open_scan()
@@ -222,16 +268,18 @@ void LinearProbingAggregateHashTable<V>::add_batch(int *input_keys, V *input_val
   // off 全部初始化为 0
 
   // for (; i + SIMD_WIDTH <= len;) {
-    // 1: 根据 `inv` 变量的值，从 `input_keys` 中 `selective load` `SIMD_WIDTH` 个不同的输入键值对。
-    // 2. 计算 i += |inv|, `|inv|` 表示 `inv` 中有效的个数 
-    // 3. 计算 hash 值，
-    // 4. 根据聚合类型（目前只支持 sum），在哈希表中更新聚合结果。如果本次循环，没有找到key[i] 在哈希表中的位置，则不更新聚合结果。
-    // 5. gather 操作，根据 hash 值将 keys_ 的 gather 结果写入 table_key 中。
-    // 6. 更新 inv 和 off。如果本次循环key[i] 聚合完成，则inv[i]=-1，表示该位置在下次循环中读取新的键值对。
-    // 如果本次循环 key[i] 未在哈希表中聚合完成（table_key[i] != key[i]），则inv[i] = 0，表示该位置在下次循环中不需要读取新的键值对。
-    // 如果本次循环中，key[i]聚合完成，则off[i] 更新为 0，表示线性探测偏移量为 0，key[i] 未完成聚合，则off[i]++,表示线性探测偏移量加 1。
+  // 1: 根据 `inv` 变量的值，从 `input_keys` 中 `selective load` `SIMD_WIDTH` 个不同的输入键值对。
+  // 2. 计算 i += |inv|, `|inv|` 表示 `inv` 中有效的个数
+  // 3. 计算 hash 值，
+  // 4. 根据聚合类型（目前只支持 sum），在哈希表中更新聚合结果。如果本次循环，没有找到key[i]
+  // 在哈希表中的位置，则不更新聚合结果。
+  // 5. gather 操作，根据 hash 值将 keys_ 的 gather 结果写入 table_key 中。
+  // 6. 更新 inv 和 off。如果本次循环key[i] 聚合完成，则inv[i]=-1，表示该位置在下次循环中读取新的键值对。
+  // 如果本次循环 key[i] 未在哈希表中聚合完成（table_key[i] != key[i]），则inv[i] =
+  // 0，表示该位置在下次循环中不需要读取新的键值对。 如果本次循环中，key[i]聚合完成，则off[i] 更新为
+  // 0，表示线性探测偏移量为 0，key[i] 未完成聚合，则off[i]++,表示线性探测偏移量加 1。
   // }
-  //7. 通过标量线性探测，处理剩余键值对
+  // 7. 通过标量线性探测，处理剩余键值对
 
   // resize_if_need();
 }
