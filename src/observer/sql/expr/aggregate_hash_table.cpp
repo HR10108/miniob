@@ -38,6 +38,7 @@ RC StandardAggregateHashTable::add_chunk(Chunk &groups_chunk, Chunk &aggrs_chunk
           case AggregateExpr::Type::SUM:
             if (aggr_value.attr_type() == AttrType::INTS && cell_value.attr_type() == AttrType::INTS) {
               aggr_value.set_int(aggr_value.get_int() + cell_value.get_int());
+              LOG_WARN("value: %d", aggr_value.get_int());
             } else if (aggr_value.attr_type() == AttrType::FLOATS && cell_value.attr_type() == AttrType::FLOATS) {
               aggr_value.set_float(aggr_value.get_float() + cell_value.get_float());
             } else {
