@@ -256,6 +256,24 @@ void LinearProbingAggregateHashTable<V>::resize_if_need()
   }
 }
 
+// 一个函数用于将 __m256i 的内容输出到 std::ostream
+void print_m256i(__m256i var)
+{
+  // 将 __m256i 转换为 8 个 32 位整数
+  alignas(32) int32_t values[8];
+  _mm256_store_si256(reinterpret_cast<__m256i *>(values), var);
+
+  // 输出这些整数
+  std::cout << "{ ";
+  for (int i = 0; i < 8; ++i) {
+    std::cout << values[i];
+    if (i != 7) {
+      std::cout << ", ";
+    }
+  }
+  std::cout << " }" << std::endl;
+}
+
 template <typename V>
 void LinearProbingAggregateHashTable<V>::add_batch(int *input_keys, V *input_values, int len)
 {
@@ -295,19 +313,23 @@ void LinearProbingAggregateHashTable<V>::add_batch(int *input_keys, V *input_val
     // 6. Update inv and off
     __m256i key_match = _mm256_cmpeq_epi32(table_key, _mm256_loadu_si256((__m256i *)key));
     inv               = _mm256_blendv_epi8(_mm256_setzero_si256(), _mm256_set1_epi32(-1), key_match);
-    off               = _mm256_add_epi32(off, _mm256_andnot_si256(key_match, _mm256_set1_epi32(1)));
+    // off               = _mm256_add_epi32(off, _mm256_andnot_si256(key_match, _mm256_set1_epi32(1)));
+    __m256i add_one = _mm256_andnot_si256(key_match, _mm256_set1_epi32(1));
+    __m256i new_off = _mm256_add_epi32(off, add_one);
+    off             = _mm256_blendv_epi8(new_off, _mm256_setzero_si256(), key_match);
 
-    // Reset off for the next batch
-    if (_mm256_testz_si256(inv, inv)) {
-      off = _mm256_setzero_si256();
-    }
+    // // Reset off for the next batch
+    // if (_mm256_testz_si256(inv, inv)) {
+    //   off = _mm256_setzero_si256();
+    // }
   }
-
+  // 输出off
+  print_m256i(off);
   // 7. Process remaining keys with scalar operations
   for (; i < len; i++) {
     int key   = input_keys[i];
     V   value = input_values[i];
-    int index = key % capacity_;
+    int index = key % (capacity_ - 1);
     while (true) {
       if (keys_[index] == EMPTY_KEY) {
         keys_[index]   = key;
