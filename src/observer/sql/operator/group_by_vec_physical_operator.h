@@ -26,15 +26,18 @@ public:
   virtual ~GroupByVecPhysicalOperator() = default;
 
   PhysicalOperatorType type() const override { return PhysicalOperatorType::GROUP_BY_VEC; }
+  // add_column_to_chunk(const Expression *expr, size_t index)
+  void add_column_to_chunk(const Expression *expr, size_t index);
 
   RC open(Trx *trx) override;
   RC next(Chunk &chunk) override;
   RC close() override;
 
 private:
-  std::vector<std::unique_ptr<Expression>>     group_by_exprs_;
-  std::vector<Expression *>                    aggregate_exprs_;
-  std::unique_ptr<AggregateHashTable>          hash_table_;
-  std::unique_ptr<AggregateHashTable::Scanner> scanner_;
-  bool                                         is_first_next_ = true;
+  std::vector<std::unique_ptr<Expression>> group_by_exprs_;
+  std::vector<Expression *>                aggregate_exprs_;
+  std::vector<Expression *>                value_expressions_;
+  StandardAggregateHashTable               hash_table_;  // 哈希表
+  StandardAggregateHashTable::Scanner     *scanner_;
+  Chunk                                    output_chunk_;
 };

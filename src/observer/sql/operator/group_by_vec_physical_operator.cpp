@@ -19,11 +19,43 @@ using namespace common;
 
 GroupByVecPhysicalOperator::GroupByVecPhysicalOperator(
     std::vector<std::unique_ptr<Expression>> &&group_by_exprs, std::vector<Expression *> &&aggregate_exprs)
-    : group_by_exprs_(std::move(group_by_exprs)), aggregate_exprs_(std::move(aggregate_exprs))
+    : group_by_exprs_(std::move(group_by_exprs)),
+      aggregate_exprs_(std::move(aggregate_exprs)),
+      hash_table_(aggregate_exprs_)
 {
-  hash_table_ = std::make_unique<StandardAggregateHashTable>(aggregate_exprs_);
+  value_expressions_.reserve(aggregate_exprs_.size());
+
+  std::transform(
+      aggregate_exprs_.begin(), aggregate_exprs_.end(), std::back_inserter(value_expressions_), [](Expression *expr) {
+        auto       *aggregate_expr = static_cast<AggregateExpr *>(expr);
+        Expression *child_expr     = aggregate_expr->child().get();
+        ASSERT(child_expr != nullptr, "aggregation expression must have a child expression");
+        return child_expr;
+      });
+
+  // Add group by columns
+  for (size_t i = 0; i < group_by_exprs_.size(); ++i) {
+    add_column_to_chunk(group_by_exprs_[i].get(), i);
+  }
+
+  // Add aggr columns
+  for (size_t i = 0; i < aggregate_exprs_.size(); ++i) {
+    add_column_to_chunk(static_cast<AggregateExpr *>(aggregate_exprs_[i]), i + group_by_exprs_.size());
+  }
 }
 
+void GroupByVecPhysicalOperator::add_column_to_chunk(const Expression *expr, size_t index)
+{
+  switch (expr->value_type()) {
+    case AttrType::INTS: output_chunk_.add_column(make_unique<Column>(AttrType::INTS, 4), index); break;
+    case AttrType::FLOATS: output_chunk_.add_column(make_unique<Column>(AttrType::FLOATS, 4), index); break;
+    case AttrType::CHARS:
+      output_chunk_.add_column(make_unique<Column>(AttrType::CHARS, expr->value_length()), index);
+      break;
+    case AttrType::BOOLEANS: output_chunk_.add_column(make_unique<Column>(AttrType::BOOLEANS, 1), index); break;
+    default: ASSERT(false, "not supported type");
+  }
+}
 RC GroupByVecPhysicalOperator::open(Trx *trx)
 {
   if (children_.empty()) {
@@ -36,49 +68,47 @@ RC GroupByVecPhysicalOperator::open(Trx *trx)
   }
 
   Chunk child_chunk;
-  while (RC::SUCCESS == (rc = children_[0]->next(child_chunk))) {
+  while (OB_SUCC(children_[0]->next(child_chunk))) {
     Chunk groups_chunk;
     Chunk aggrs_chunk;
 
     // 计算group by表达式
     for (const auto &expr : group_by_exprs_) {
-      Column column;
-      expr->get_column(child_chunk, column);
-      groups_chunk.add_column(std::make_unique<Column>(column.attr_type(), column.attr_len()), -1);
-      memcpy(groups_chunk.column(groups_chunk.column_num() - 1).data(), column.data(), column.data_len());
+      auto column = std::make_unique<Column>();
+      expr->get_column(child_chunk, *column);
+      groups_chunk.add_column(std::move(column), -1);
+      //LOG_WARN("column: %d,rows: %d", groups_chunk.column_num(), groups_chunk.rows());
     }
 
     // 计算聚合表达式
-    for (const auto &expr : aggregate_exprs_) {
-      Column column;
-      expr->get_column(child_chunk, column);
-      aggrs_chunk.add_column(std::make_unique<Column>(column.attr_type(), column.attr_len()), -1);
-      memcpy(aggrs_chunk.column(aggrs_chunk.column_num() - 1).data(), column.data(), column.data_len());
+    for (const auto &expr : value_expressions_) {
+      auto column = std::make_unique<Column>();
+      expr->get_column(child_chunk, *column);
+      aggrs_chunk.add_column(std::move(column), -1);
     }
 
-    rc = hash_table_->add_chunk(groups_chunk, aggrs_chunk);
-    if (rc != RC::SUCCESS) {
-      return rc;
-    }
+    hash_table_.add_chunk(groups_chunk, aggrs_chunk);
   }
 
-  if (rc != RC::RECORD_EOF) {
-    return rc;
+  if (rc == RC::RECORD_EOF) {
+    rc = RC::SUCCESS;
   }
 
-  scanner_ = std::make_unique<StandardAggregateHashTable::Scanner>(hash_table_.get());
+  scanner_ = new StandardAggregateHashTable::Scanner(&hash_table_);
   scanner_->open_scan();
 
-  return RC::SUCCESS;
+  return rc;
 }
 
 RC GroupByVecPhysicalOperator::next(Chunk &chunk)
 {
-  if (is_first_next_) {
-    is_first_next_ = false;
-    return scanner_->next(chunk);
+  RC rc = scanner_->next(output_chunk_);
+
+  if (OB_FAIL(rc)) {
+    return rc;
   }
-  return RC::RECORD_EOF;
+  rc = chunk.reference(output_chunk_);
+  return rc;
 }
 
 RC GroupByVecPhysicalOperator::close()
