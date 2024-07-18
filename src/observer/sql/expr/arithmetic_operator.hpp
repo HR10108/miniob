@@ -151,9 +151,9 @@ struct SubtractOperator
   }
   // your code here
 #if defined(USE_SIMD)
-  static inline __m256 operation(__m256 left, __m256 right) { exit(-1); }
+  static inline __m256 operation(__m256 left, __m256 right) { return _mm256_sub_ps(left, right); }
 
-  static inline __m256i operation(__m256i left, __m256i right) { exit(-1); }
+  static inline __m256i operation(__m256i left, __m256i right) { return _mm256_sub_epi32(left, right); }
 #endif
 };
 
@@ -166,9 +166,9 @@ struct MultiplyOperator
   }
 // your code here
 #if defined(USE_SIMD)
-  static inline __m256 operation(__m256 left, __m256 right) { exit(-1); }
+  static inline __m256 operation(__m256 left, __m256 right) { return _mm256_mul_ps(left, right); }
 
-  static inline __m256i operation(__m256i left, __m256i right) { exit(-1); }
+  static inline __m256i operation(__m256i left, __m256i right) { return _mm256_mullo_epi32(left, right); }
 #endif
 };
 
@@ -208,7 +208,7 @@ template <typename T, bool LEFT_CONSTANT, bool RIGHT_CONSTANT, class OP>
 void compare_operation(T *left, T *right, int n, std::vector<uint8_t> &result)
 {
 #if defined(USE_SIMD)
-  int           i          = 0;
+  int i = 0;
   if constexpr (std::is_same<T, float>::value) {
     for (; i <= n - SIMD_WIDTH; i += SIMD_WIDTH) {
       __m256 left_value, right_value;

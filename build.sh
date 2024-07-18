@@ -125,8 +125,8 @@ function do_build
 {
   TYPE=$1; shift
   prepare_build_dir $TYPE || return
-  echo "${CMAKE_COMMAND} ${TOPDIR} $@"
-  ${CMAKE_COMMAND} -S ${TOPDIR} $@
+  echo "${CMAKE_COMMAND} ${TOPDIR} -DUSE_SIMD=ON $@"
+  ${CMAKE_COMMAND} -S ${TOPDIR} -DUSE_SIMD=ON $@
 }
 
 function do_clean
